@@ -1,0 +1,255 @@
+#/bin/bash
+
+#Using parallel arrays to simulate a deck of cards. One array stores the card
+#face itself, the other stores the associated value. Aces are hardcoded as 11's
+#for now but this will change during the game.
+#Would have implemented an object in an O-O language, this is obviously
+#not one
+cards=(2Diamonds 2Hearts 2Spades 2Clubs 3Diamonds 3Hearts 3Spades 3Clubs
+4Diamonds 4Hearts 4Spades 4Clubs 5Diamonds 5Hearts 5Spades 5Clubs 6Diamonds
+6Hearts 6Spades 6Clubs 7Diamonds 7Hearts 7Spades 7Clubs 8Diamonds 8Hearts
+8Spades 8Clubs 9Diamonds 9Hearts 9Spades 9Clubs 10Diamonds 10Hearts 10Spades
+10Clubs JackDiamonds JackHearts JackSpades JackClubs QueenDiamonds QueenHearts
+QueenSpades QueenClubs KingDiamonds KingHearts KingSpades KingClubs AceDiamonds
+AceHearts AceSpades AceClubs)
+values=(2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5 6 6 6 6 7 7 7 7 8 8 8 8 9 9 9 9 10 10
+10 10 10 10 10 10 10 10 10 10 10 10 10 10 11 11 11 11)
+
+#This loop shuffles the arrays in parallel, giving a unique new game each time
+for ((i=0;i<52;i++))
+do
+temp=${cards[i]}
+temp2=${values[i]}
+rnd=$(( $RANDOM % 52 ))
+cards[i]=${cards[rnd]}
+values[i]=${values[rnd]}
+cards[rnd]=$temp
+values[rnd]=$temp2
+done
+
+#keeps track of which card you're drawing from the deck
+index=0
+
+#keeps track of the number of times you had to subtract 10.
+#This happens when either you or the dealer has more than 21
+#but they have aces that could be interpreted as a 1.
+numSubsPlayer=0
+numSubsDealer=0
+
+#generates the first cards in the player's hand
+playerHand=${cards[index]}
+playerHand+=" "
+playerValue=${values[index]}
+((index++))
+playerHand+=${cards[index]}
+playerHand+=" "
+playerValue=$((playerValue + ${values[index]} ))
+((index++))
+
+#if the player has 2 aces (unlikely), interpret one as a 1.
+if [ $playerValue -eq 22 ]
+then
+playerValue=$(( $playerValue - 10 ))
+((numSubsPlayer++))
+fi
+
+#display contents of players hand and the associated value
+echo "Player's Hand"
+echo $playerHand
+echo "Total:" $playerValue
+
+#you cant see the dealers first card so a ? will display
+dealerHand="? "
+dealerValue=${values[index]}
+((index++))
+dealerHand+=${cards[index]}
+dealerHand+=" "
+dealerValue=$((dealerValue + ${values[index]} ))
+((index++))
+
+#if the dealer has 2 aces, interpret one as a 1.
+if [ $dealerValue -eq 22 ]
+then
+dealerValue=$(( $dealerValue - 10 ))
+((numSubsDealer++))
+fi
+
+#displays contents of dealers hand but doesn't show associated values
+echo ""
+echo "Dealer's Hand"
+echo $dealerHand
+
+#by rule you would push if both you and the dealer get 21 after handing out the
+#cards
+if [ $playerValue -eq 21 ] && [ $dealerValue -eq 21 ]
+then
+echo "You pushed. Both of you have 21"
+exit 0
+fi
+
+#by rule, you would win automatically if you get 21 after you draw 2 and the
+#dealer doesnt
+if [ $playerValue -eq 21 ] && [ $dealerValue -lt 21 ]
+then
+echo "You win, you got a blackjack"
+exit 0
+fi
+
+
+response=""
+while [ "$response" != "stand" ] && [ $playerValue -lt 21 ]
+do
+
+#asking the user what they want to do
+echo "Would you like to hit or stand? Type 'hit' or 'stand'"
+read response
+
+#input validation
+while [ "$response" != "stand" ] && [ "$response" != "hit" ]
+do
+echo "Error. Would you like to hit or stand? Type 'hit' or 'stand'"
+read response
+done
+
+if [ "$response" = "hit" ]
+then
+#drawing a card
+playerHand+=${cards[index]}
+playerHand+=" "
+playerValue=$((playerValue + ${values[index]} ))
+((index++))
+
+        #if you bust, make sure you don't have an Ace
+        if [ $playerValue -gt 21 ]
+        then
+
+        #looked up here strings
+        #This looks up the number of occures of A in the hand to see
+        #the number of Ace values. Supplies $playerHand to the grep command
+        #and then the piped wc command  counts the number of instances
+        numAs=$(grep -o "A" <<< "$playerHand" | wc -l)
+                while [ $numAs -gt 0 ] && [ $numSubsPlayer -lt $numAs ]
+                do
+                playerValue=$(( $playerValue - 10 ))
+                ((numSubsPlayer++))
+                ((numAs--))
+                        if [ $playerValue -le 21 ]
+                        then
+                        break
+                        fi
+                done
+        fi
+
+#displays the contents of the player's hand
+echo "Player's Hand"
+echo $playerHand
+echo "Total:" $playerValue
+
+        #by rule, the dealer has to draw until they have at least 17
+        if [ $dealerValue -lt 17 ]
+        then
+        dealerHand+=${cards[index]}
+        dealerHand+=" "
+        dealerValue=$((dealerValue + ${values[index]} ))
+        ((index++))
+
+                #performing the same checks for Aces as above
+                if [ $dealerValue -gt 21 ]
+                then
+                #if the concealed card is an Ace
+                numAs1=$(grep -o "A" <<< ${cards[2]} | wc -l)
+                #otherwise the process is the same
+                numAs2=$(grep -o "A" <<< $dealerHand | wc -l)
+                numAs=$(($numAs1 + $numAs2))
+                while [ $numAs -gt 0 ] && [ $numSubsDealer -lt $numAs ]
+                do
+                dealerValue=$(( $dealerValue - 10 ))
+                ((numAs--))
+                ((numSubsDealer++))
+                        if [ $dealerValue -le 21 ]
+                        then
+                        break
+                        fi
+                done
+
+                fi
+        fi
+
+#prints dealers hand
+echo ""
+echo "Dealer's Hand"
+echo $dealerHand
+
+fi
+
+done
+
+#the loop will break if the player stands or busts
+#however, the dealer still needs to have at least 17
+#same process as above is repeated
+while [ $dealerValue -lt 17 ]
+do
+        dealerHand+=${cards[index]}
+        dealerHand+=" "
+        dealerValue=$((dealerValue + ${values[index]} ))
+        ((index++))
+
+                if [ $dealerValue -gt 21 ]
+                then
+                numAs1=$(grep -o "A" <<< ${cards[2]} | wc -l)
+                numAs2=$(grep -o "A" <<< $dealerHand | wc -l)
+                numAs=$(($numAs1 + $numAs2))
+                while [ $numAs -gt 0 ] && [ $numSubsDealer -lt $numAs ]
+                do
+                dealerValue=$(( $dealerValue - 10 ))
+                ((numAs--))
+                ((numSubsDealer++))
+                        if [ $dealerValue -le 21 ]
+                        then
+                        break
+                        fi
+                done
+
+                fi
+
+done
+
+#displays the players hand
+echo ""
+echo "Player's Hand"
+echo $playerHand
+echo "Total:" $playerValue
+
+#now displaying the dealers hand
+echo ""
+echo "Dealer's Hand"
+#replacing the ? with the actual card
+echo "${dealerHand/?/${cards[2]}}"
+echo "Total:" $dealerValue
+
+echo ""
+
+#if you bust you lose, even if the dealer busts, too
+if [ $playerValue -gt 21 ]
+then
+echo "You lost"
+
+#if the dealer busts but you didnt, you win
+elif [ $dealerValue -gt 21 ] && [ $playerValue -le 21 ]
+then
+echo "you won"
+
+#if you have the same amount, you push
+elif [ $playerValue -eq $dealerValue ]
+then
+echo "push"
+
+#if the dealer has more, you lose
+elif [ $dealerValue -gt $playerValue ]
+then
+echo "you lost"
+
+#otherwise you win
+else
+echo "you won"
+fi
